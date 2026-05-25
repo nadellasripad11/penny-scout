@@ -1313,8 +1313,7 @@ function checkPasscode() {
 
 // ── Filters ──
 function buildNameFilter() {
-  const entries = loadEntries();
-  const names = [...new Set(entries.map(e => e.name))].sort();
+  const names = [...new Set(allEntries.map(e => e.name))].sort();
   const sel = document.getElementById('f-name');
   sel.innerHTML = '<option value="">Everyone</option>' +
     names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
