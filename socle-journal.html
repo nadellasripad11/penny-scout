@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Socle — Daily Journal</title>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -537,6 +539,57 @@
 
   .no-results { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 14px; }
 
+  /* ── Setup / Loading ── */
+  .setup-overlay {
+    position: fixed; inset: 0; background: var(--bg);
+    z-index: 700; display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .setup-overlay.hidden { display: none; }
+  .setup-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 20px; padding: 44px 40px; max-width: 520px; width: 100%;
+    box-shadow: var(--shadow-md); text-align: center;
+  }
+  .setup-icon { font-size: 36px; margin-bottom: 16px; }
+  .setup-title { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 6px; }
+  .setup-sub { font-size: 14px; color: var(--text-secondary); margin-bottom: 28px; line-height: 1.6; }
+  .setup-steps { text-align: left; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 20px; }
+  .setup-step { font-size: 13px; color: var(--text-secondary); padding: 5px 0; display: flex; gap: 10px; }
+  .setup-step-num { font-weight: 700; color: var(--accent); flex-shrink: 0; }
+  .setup-step a { color: var(--accent); text-decoration: none; }
+  .setup-step a:hover { text-decoration: underline; }
+  .setup-textarea {
+    width: 100%; min-height: 110px; padding: 12px 14px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+    background: var(--bg); color: var(--text); resize: vertical;
+    outline: none; transition: border-color 0.15s; margin-bottom: 12px;
+  }
+  .setup-textarea:focus { border-color: var(--accent-muted); }
+  .setup-textarea.error { border-color: #dc2626; }
+  .setup-btn {
+    width: 100%; padding: 12px; background: var(--accent); color: #fff;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: opacity 0.15s;
+  }
+  .setup-btn:hover { opacity: 0.85; }
+  .setup-error { font-size: 12px; color: #dc2626; margin-top: 8px; min-height: 16px; }
+
+  .loading-bar {
+    position: fixed; top: 0; left: 0; height: 2px; width: 0;
+    background: var(--accent); z-index: 999; transition: width 0.3s ease;
+  }
+  .loading-bar.active { width: 70%; }
+  .loading-bar.done { width: 100%; opacity: 0; transition: width 0.2s, opacity 0.3s 0.1s; }
+
+  .db-badge {
+    font-size: 11px; font-weight: 500; padding: 2px 8px;
+    border-radius: 20px; background: var(--green-light); color: var(--green);
+    margin-left: 8px; vertical-align: middle;
+  }
+  .db-badge.offline { background: var(--border-light); color: var(--text-muted); }
+
   /* ── Responsive ── */
   @media (max-width: 520px) {
     .two-col, .three-col { grid-template-columns: 1fr; }
@@ -550,8 +603,29 @@
 </head>
 <body>
 
+<!-- LOADING BAR -->
+<div class="loading-bar" id="loading-bar"></div>
+
+<!-- FIREBASE SETUP SCREEN -->
+<div class="setup-overlay" id="setup-overlay">
+  <div class="setup-box">
+    <div class="setup-icon">🔥</div>
+    <div class="setup-title">Connect your database</div>
+    <div class="setup-sub">Socle needs a shared database so your whole team's entries appear in one place. It takes 3 minutes and it's free.</div>
+    <div class="setup-steps">
+      <div class="setup-step"><span class="setup-step-num">1</span><span>Go to <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a> → Create a project (any name)</span></div>
+      <div class="setup-step"><span class="setup-step-num">2</span><span>Click <strong>Firestore Database</strong> → Create database → <strong>Start in test mode</strong></span></div>
+      <div class="setup-step"><span class="setup-step-num">3</span><span>Go to <strong>Project settings</strong> → Your apps → click <strong>&lt;/&gt;</strong> (Web) → Register app</span></div>
+      <div class="setup-step"><span class="setup-step-num">4</span><span>Copy the <code>firebaseConfig</code> object and paste it below</span></div>
+    </div>
+    <textarea class="setup-textarea" id="setup-config" placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "storageBucket": "...", "messagingSenderId": "...", "appId": "..." }'></textarea>
+    <div class="setup-error" id="setup-error"></div>
+    <button class="setup-btn" onclick="connectFirebase()">Connect →</button>
+  </div>
+</div>
+
 <nav>
-  <div class="nav-brand">Socle<span>.</span></div>
+  <div class="nav-brand">Socle<span>.</span><span class="db-badge offline" id="db-badge">local</span></div>
   <div class="nav-actions">
     <button class="admin-lock" onclick="openPasscode()" title="Admin">⚙</button>
     <button class="btn-ghost" onclick="showView('log')">Log</button>
@@ -856,9 +930,13 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const STORE_KEY = 'socle_journal_v1';
-let pendingImages = [];   // {dataUrl, name} — images staged for current entry
-let modalImages   = [];   // images for the currently open modal entry (for lightbox)
+// ═══════════════════════════════════════════════════════
+//  DATABASE  (Firebase Firestore)
+// ═══════════════════════════════════════════════════════
+let db           = null;
+let allEntries   = [];   // module-level cache, loaded from Firestore
+let pendingImages = [];
+let modalImages   = [];
 
 // ── Helpers ──
 function esc(s) {
@@ -880,22 +958,123 @@ function avatarColor(name) {
 }
 function hasMetrics(m) { return m && Object.values(m).some(v => v !== null && v !== undefined); }
 
-// ── Storage ──
-function loadEntries() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
-}
-function saveEntries(entries) {
+// ── Firebase init ──
+function initFirebase() {
+  const raw = localStorage.getItem('socle_firebase_config');
+  if (!raw) return false;
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(entries));
+    const cfg = JSON.parse(raw);
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    db = firebase.firestore();
+    document.getElementById('db-badge').textContent = 'live';
+    document.getElementById('db-badge').classList.remove('offline');
     return true;
-  } catch (err) {
-    if (err.name === 'QuotaExceededError' || err.code === 22) {
-      showToast('Storage full — try fewer or smaller photos');
-    } else {
-      showToast('Could not save — ' + err.message);
+  } catch(e) { console.error('Firebase init:', e); return false; }
+}
+
+async function connectFirebase() {
+  const ta  = document.getElementById('setup-config');
+  const err = document.getElementById('setup-error');
+  err.textContent = '';
+  ta.classList.remove('error');
+  let cfg;
+  try {
+    // allow pasting the full JS object (with or without quotes on keys)
+    const cleaned = ta.value.trim()
+      .replace(/^const\s+firebaseConfig\s*=\s*/, '')
+      .replace(/;$/, '');
+    cfg = JSON.parse(cleaned);
+  } catch(e) {
+    ta.classList.add('error');
+    err.textContent = 'Invalid JSON — paste only the config object { ... }';
+    return;
+  }
+  if (!cfg.apiKey || !cfg.projectId) {
+    ta.classList.add('error');
+    err.textContent = 'Config looks incomplete — make sure it has apiKey and projectId';
+    return;
+  }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    const testDb = firebase.firestore();
+    await testDb.collection('entries').limit(1).get(); // test connection
+    db = testDb;
+    localStorage.setItem('socle_firebase_config', JSON.stringify(cfg));
+    document.getElementById('setup-overlay').classList.add('hidden');
+    document.getElementById('db-badge').textContent = 'live';
+    document.getElementById('db-badge').classList.remove('offline');
+    showToast('Connected ✓ — database is live');
+    showView('new');
+    await refreshEntries();
+  } catch(e) {
+    ta.classList.add('error');
+    err.textContent = 'Connection failed: ' + e.message;
+  }
+}
+
+// ── Storage ──
+async function refreshEntries() {
+  if (!db) return;
+  startLoading();
+  try {
+    const snap = await db.collection('entries').orderBy('date','desc').get();
+    const remote = snap.docs.map(d => d.data());
+    // merge in local images (too large for Firestore — stored per device)
+    const localImgs = JSON.parse(localStorage.getItem('socle_local_images') || '{}');
+    allEntries = remote.map(e => ({ ...e, images: localImgs[String(e.id)] || [] }));
+  } catch(e) {
+    showToast('Sync error — ' + e.message);
+  }
+  endLoading();
+}
+
+async function dbSaveEntry(entry) {
+  if (!db) { showToast('Not connected to database'); return false; }
+  try {
+    // Images stay local (base64 is too large for Firestore docs)
+    if (entry.images && entry.images.length) {
+      const li = JSON.parse(localStorage.getItem('socle_local_images') || '{}');
+      li[String(entry.id)] = entry.images;
+      localStorage.setItem('socle_local_images', JSON.stringify(li));
     }
+    const { images, ...noImages } = entry;
+    await db.collection('entries').doc(String(entry.id)).set(noImages);
+    return true;
+  } catch(e) {
+    showToast('Save failed — ' + e.message);
     return false;
   }
+}
+
+async function dbDeleteEntry(entryId) {
+  if (!db) return;
+  try {
+    await db.collection('entries').doc(String(entryId)).delete();
+    const li = JSON.parse(localStorage.getItem('socle_local_images') || '{}');
+    delete li[String(entryId)];
+    localStorage.setItem('socle_local_images', JSON.stringify(li));
+  } catch(e) { showToast('Delete failed — ' + e.message); }
+}
+
+async function dbClearAll() {
+  if (!db) return;
+  const snap = await db.collection('entries').get();
+  const batch = db.batch();
+  snap.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
+  localStorage.removeItem('socle_local_images');
+  allEntries = [];
+}
+
+// ── Loading bar ──
+function startLoading() {
+  const b = document.getElementById('loading-bar');
+  b.classList.remove('done'); b.classList.add('active');
+}
+function endLoading() {
+  const b = document.getElementById('loading-bar');
+  b.classList.remove('active'); b.classList.add('done');
+  setTimeout(() => b.classList.remove('done'), 400);
 }
 
 // ── Toast ──
@@ -910,7 +1089,8 @@ function showView(v) {
   if (v === 'admin' && !adminUnlocked) { openPasscode(); return; }
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.getElementById('view-' + v).classList.add('active');
-  if (v === 'log') renderLog();
+  if (v === 'log')   renderLog();
+  if (v === 'admin') renderAdmin();
 }
 
 // ── Image upload ──
@@ -965,11 +1145,25 @@ document.getElementById('hero-date').textContent = fmt(today());
 const _savedName = localStorage.getItem('socle_last_name');
 if (_savedName) document.getElementById('name').value = _savedName;
 
+// Boot: init Firebase or show setup
+(async function boot() {
+  const ready = initFirebase();
+  if (!ready) {
+    document.getElementById('setup-overlay').style.display = 'flex';
+  } else {
+    document.getElementById('setup-overlay').classList.add('hidden');
+    await refreshEntries();
+  }
+})();
+
 // ── Form submit ──
-document.getElementById('journal-form').addEventListener('submit', function(e) {
+document.getElementById('journal-form').addEventListener('submit', async function(e) {
   e.preventDefault();
   const name = val('name');
   if (!name) { showToast('Please enter your name'); return; }
+
+  const btn = this.querySelector('.btn-save');
+  btn.textContent = 'Saving…'; btn.disabled = true;
 
   const entry = {
     id: Date.now(),
@@ -995,9 +1189,13 @@ document.getElementById('journal-form').addEventListener('submit', function(e) {
     images: pendingImages.slice()
   };
 
-  const entries = loadEntries();
-  entries.unshift(entry);
-  if (!saveEntries(entries)) return; // storage error already toasted
+  const ok = await dbSaveEntry(entry);
+  btn.textContent = 'Save Entry →'; btn.disabled = false;
+  if (!ok) return;
+
+  // Update local cache immediately so log view is snappy
+  allEntries.unshift({ ...entry });
+  allEntries.sort((a,b) => b.date.localeCompare(a.date));
 
   localStorage.setItem('socle_last_name', name);
   showToast('Entry saved ✓');
@@ -1013,8 +1211,9 @@ document.getElementById('journal-form').addEventListener('submit', function(e) {
 });
 
 // ── Log view ──
-function renderLog() {
-  const entries = loadEntries();
+async function renderLog() {
+  await refreshEntries();
+  const entries = allEntries;
   document.getElementById('entries-count').textContent = entries.length + (entries.length === 1 ? ' entry' : ' entries');
 
   if (!entries.length) {
@@ -1025,8 +1224,8 @@ function renderLog() {
     return;
   }
 
-  document.getElementById('entries-list').innerHTML = entries.map((e, i) => `
-    <div class="entry-card" onclick="openEntry(${i})">
+  document.getElementById('entries-list').innerHTML = entries.map(e => `
+    <div class="entry-card" onclick="openEntry(${e.id})">
       <div class="entry-card-header">
         <div class="entry-meta">
           <div class="entry-avatar" style="background:${avatarColor(e.name)}">${initials(e.name)}</div>
@@ -1048,9 +1247,8 @@ function renderLog() {
 }
 
 // ── Entry detail modal ──
-function openEntry(i) {
-  const entries = loadEntries();
-  const e = entries[i];
+function openEntry(id) {
+  const e = allEntries.find(x => x.id === id);
   if (!e) return;
 
   modalImages = e.images || [];
@@ -1102,7 +1300,7 @@ function openEntry(i) {
     ${hasMetrics(m) ? `<div class="detail-section"><div class="detail-section-title">Metrics</div>${metricHtml}</div>` : ''}
     ${photosHtml}
     <div style="text-align:right;padding-top:8px">
-      <button class="btn-ghost" style="color:#dc2626;border-color:#fca5a5" onclick="deleteEntry(${i})">Delete entry</button>
+      <button class="btn-ghost" style="color:#dc2626;border-color:#fca5a5" onclick="deleteEntry(${e.id})">Delete entry</button>
     </div>`;
 
   document.getElementById('modal-overlay').classList.add('open');
@@ -1116,11 +1314,10 @@ function metricBox(label, value) {
   </div>`;
 }
 
-function deleteEntry(i) {
+async function deleteEntry(id) {
   if (!confirm('Delete this entry?')) return;
-  const entries = loadEntries();
-  entries.splice(i, 1);
-  saveEntries(entries);
+  await dbDeleteEntry(id);
+  allEntries = allEntries.filter(e => e.id !== id);
   closeModalDirect();
   renderLog();
   showToast('Entry deleted');
@@ -1148,7 +1345,6 @@ function checkPasscode() {
     document.getElementById('passcode-overlay').classList.remove('open');
     inp.value = '';
     showView('admin');
-    renderAdmin();
   } else {
     inp.classList.add('error');
     setTimeout(() => inp.classList.remove('error'), 500);
@@ -1166,7 +1362,7 @@ function buildNameFilter() {
 }
 
 function applyFilters() {
-  const all = loadEntries();
+  const all = allEntries;
   const search = document.getElementById('f-search').value.trim().toLowerCase();
   const name   = document.getElementById('f-name').value;
   const from   = document.getElementById('f-from').value;
@@ -1196,14 +1392,15 @@ function clearFilters() {
   applyFilters();
 }
 
-function renderAdmin() {
+async function renderAdmin() {
+  await refreshEntries();
   buildNameFilter();
   applyFilters();
 }
 
 // ── Stats ──
 function renderAdminStats() {
-  const all    = loadEntries();
+  const all    = allEntries;
   const f      = filteredEntries;
   const members = [...new Set(f.map(e => e.name))];
   const week   = f.filter(e => e.date >= weekAgo()).length;
@@ -1389,9 +1586,7 @@ function renderAdminEntries() {
         m.meetings != null ? `📅${m.meetings}` : '',
         m.outreach != null ? `📤${m.outreach}` : '',
       ].filter(Boolean).join(' ') || '—';
-      // find real index in loadEntries() for modal
-      const realIdx = loadEntries().findIndex(x => x.id === e.id);
-      return `<div class="admin-entry" onclick="openEntry(${realIdx})">
+      return `<div class="admin-entry" onclick="openEntry(${e.id})">
         <div class="admin-entry-row">
           <div class="admin-entry-avatar" style="background:${avatarColor(e.name)}">${initials(e.name)}</div>
           <div>
@@ -1407,8 +1602,8 @@ function renderAdminEntries() {
     }).join('');
 }
 
-function clearAllEntries() {
-  saveEntries([]);
+async function clearAllEntries() {
+  await dbClearAll();
   applyFilters();
   showToast('All entries cleared');
 }
