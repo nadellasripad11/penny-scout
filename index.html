@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Socle — Daily Journal</title>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -931,10 +931,20 @@
 
 <script>
 // ═══════════════════════════════════════════════════════
-//  DATABASE  (Firebase Firestore)
+//  DATABASE  (Firebase Realtime Database)
 // ═══════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey:            "AIzaSyDyBfE7D3pcnx6JTRqAJ0nS8WKP8eq7kIA",
+  authDomain:        "socle-journal.firebaseapp.com",
+  databaseURL:       "https://socle-journal-default-rtdb.firebaseio.com",
+  projectId:         "socle-journal",
+  storageBucket:     "socle-journal.firebasestorage.app",
+  messagingSenderId: "487587268213",
+  appId:             "1:487587268213:web:da29a9e65662f1543a1a3c"
+};
+
 let db           = null;
-let allEntries   = [];   // module-level cache, loaded from Firestore
+let allEntries   = [];
 let pendingImages = [];
 let modalImages   = [];
 
@@ -960,66 +970,23 @@ function hasMetrics(m) { return m && Object.values(m).some(v => v !== null && v 
 
 // ── Firebase init ──
 function initFirebase() {
-  const raw = localStorage.getItem('socle_firebase_config');
-  if (!raw) return false;
   try {
-    const cfg = JSON.parse(raw);
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
-    db = firebase.firestore();
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.database();
     document.getElementById('db-badge').textContent = 'live';
     document.getElementById('db-badge').classList.remove('offline');
     return true;
   } catch(e) { console.error('Firebase init:', e); return false; }
 }
 
-async function connectFirebase() {
-  const ta  = document.getElementById('setup-config');
-  const err = document.getElementById('setup-error');
-  err.textContent = '';
-  ta.classList.remove('error');
-  let cfg;
-  try {
-    // allow pasting the full JS object (with or without quotes on keys)
-    const cleaned = ta.value.trim()
-      .replace(/^const\s+firebaseConfig\s*=\s*/, '')
-      .replace(/;$/, '');
-    cfg = JSON.parse(cleaned);
-  } catch(e) {
-    ta.classList.add('error');
-    err.textContent = 'Invalid JSON — paste only the config object { ... }';
-    return;
-  }
-  if (!cfg.apiKey || !cfg.projectId) {
-    ta.classList.add('error');
-    err.textContent = 'Config looks incomplete — make sure it has apiKey and projectId';
-    return;
-  }
-  try {
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
-    const testDb = firebase.firestore();
-    await testDb.collection('entries').limit(1).get(); // test connection
-    db = testDb;
-    localStorage.setItem('socle_firebase_config', JSON.stringify(cfg));
-    document.getElementById('setup-overlay').classList.add('hidden');
-    document.getElementById('db-badge').textContent = 'live';
-    document.getElementById('db-badge').classList.remove('offline');
-    showToast('Connected ✓ — database is live');
-    showView('new');
-    await refreshEntries();
-  } catch(e) {
-    ta.classList.add('error');
-    err.textContent = 'Connection failed: ' + e.message;
-  }
-}
-
-// ── Storage ──
+// ── Storage (Firebase Realtime Database) ──
 async function refreshEntries() {
   if (!db) return;
   startLoading();
   try {
-    const snap = await db.collection('entries').orderBy('date','desc').get();
-    const remote = snap.docs.map(d => d.data());
-    // merge in local images (too large for Firestore — stored per device)
+    const snap = await db.ref('entries').orderByChild('date').once('value');
+    const val  = snap.val() || {};
+    const remote = Object.values(val).sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
     const localImgs = JSON.parse(localStorage.getItem('socle_local_images') || '{}');
     allEntries = remote.map(e => ({ ...e, images: localImgs[String(e.id)] || [] }));
   } catch(e) {
@@ -1031,14 +998,13 @@ async function refreshEntries() {
 async function dbSaveEntry(entry) {
   if (!db) { showToast('Not connected to database'); return false; }
   try {
-    // Images stay local (base64 is too large for Firestore docs)
     if (entry.images && entry.images.length) {
       const li = JSON.parse(localStorage.getItem('socle_local_images') || '{}');
       li[String(entry.id)] = entry.images;
       localStorage.setItem('socle_local_images', JSON.stringify(li));
     }
     const { images, ...noImages } = entry;
-    await db.collection('entries').doc(String(entry.id)).set(noImages);
+    await db.ref('entries/' + entry.id).set(noImages);
     return true;
   } catch(e) {
     showToast('Save failed — ' + e.message);
@@ -1049,7 +1015,7 @@ async function dbSaveEntry(entry) {
 async function dbDeleteEntry(entryId) {
   if (!db) return;
   try {
-    await db.collection('entries').doc(String(entryId)).delete();
+    await db.ref('entries/' + entryId).remove();
     const li = JSON.parse(localStorage.getItem('socle_local_images') || '{}');
     delete li[String(entryId)];
     localStorage.setItem('socle_local_images', JSON.stringify(li));
@@ -1058,10 +1024,7 @@ async function dbDeleteEntry(entryId) {
 
 async function dbClearAll() {
   if (!db) return;
-  const snap = await db.collection('entries').get();
-  const batch = db.batch();
-  snap.docs.forEach(d => batch.delete(d.ref));
-  await batch.commit();
+  await db.ref('entries').remove();
   localStorage.removeItem('socle_local_images');
   allEntries = [];
 }
@@ -1145,15 +1108,11 @@ document.getElementById('hero-date').textContent = fmt(today());
 const _savedName = localStorage.getItem('socle_last_name');
 if (_savedName) document.getElementById('name').value = _savedName;
 
-// Boot: init Firebase or show setup
+// Boot: init Firebase (config is hardcoded — no setup needed)
 (async function boot() {
-  const ready = initFirebase();
-  if (!ready) {
-    document.getElementById('setup-overlay').style.display = 'flex';
-  } else {
-    document.getElementById('setup-overlay').classList.add('hidden');
-    await refreshEntries();
-  }
+  initFirebase();
+  document.getElementById('setup-overlay').classList.add('hidden');
+  await refreshEntries();
 })();
 
 // ── Form submit ──
