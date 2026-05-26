@@ -706,35 +706,6 @@
         </div>
       </div>
 
-      <!-- Daily Questions -->
-      <div class="form-card">
-        <div class="form-section-header">
-          <span class="section-label">Daily Check-in</span>
-        </div>
-        <div class="field-group">
-          <div class="field">
-            <label for="worked-on">What did you work on today?</label>
-            <textarea class="short" id="worked-on" placeholder="Projects, tasks, conversations…"></textarea>
-          </div>
-          <div class="field">
-            <label for="completed">What got completed?</label>
-            <textarea class="short" id="completed" placeholder="Things you can cross off…"></textarea>
-          </div>
-          <div class="field">
-            <label for="blockers">Any blockers?</label>
-            <textarea class="short" id="blockers" placeholder="What's in the way?"></textarea>
-          </div>
-          <div class="field">
-            <label for="tomorrow">Plan for tomorrow</label>
-            <textarea class="short" id="tomorrow" placeholder="Top 1–3 priorities…"></textarea>
-          </div>
-          <div class="field">
-            <label for="ideas">Ideas, feedback, or lessons learned</label>
-            <textarea class="short" id="ideas" placeholder="Anything worth noting…"></textarea>
-          </div>
-        </div>
-      </div>
-
       <!-- Images -->
       <div class="form-card">
         <div class="form-section-header">
@@ -895,15 +866,11 @@
       </table>
     </div>
 
-    <!-- Top wins & blockers -->
-    <div class="analytics-grid" style="margin-bottom:24px">
+    <!-- Top wins -->
+    <div style="margin-bottom:24px">
       <div class="analytics-card">
         <div class="analytics-card-title">Top Wins (Most Mentioned)</div>
         <div class="bar-chart" id="chart-wins"></div>
-      </div>
-      <div class="analytics-card">
-        <div class="analytics-card-title">Top Blockers (Most Mentioned)</div>
-        <div class="bar-chart" id="chart-blockers"></div>
       </div>
     </div>
 
@@ -1133,11 +1100,6 @@ document.getElementById('journal-form').addEventListener('submit', async functio
     challenge: val('challenge'),
     moved:     val('moved'),
     attention: val('attention'),
-    workedOn:  val('worked-on'),
-    completed: val('completed'),
-    blockers:  val('blockers'),
-    tomorrow:  val('tomorrow'),
-    ideas:     val('ideas'),
     metrics: {
       calls:    numVal('m-calls'),
       meetings: numVal('m-meetings'),
@@ -1159,7 +1121,7 @@ document.getElementById('journal-form').addEventListener('submit', async functio
   localStorage.setItem('socle_last_name', name);
   showToast('Entry saved ✓');
 
-  ['focus','win','challenge','moved','attention','worked-on','completed','blockers','tomorrow','ideas',
+  ['focus','win','challenge','moved','attention',
    'm-calls','m-meetings','m-content','m-product','m-outreach'].forEach(id => {
     document.getElementById(id).value = '';
   });
@@ -1198,7 +1160,6 @@ async function renderLog() {
       ${e.focus ? `<div class="entry-focus"><strong>Focus:</strong> ${esc(e.focus)}</div>` : ''}
       <div class="entry-preview">
         ${e.win     ? `<span class="tag accent">Win: ${esc(e.win.slice(0,40))}${e.win.length>40?'…':''}</span>` : ''}
-        ${e.blockers? `<span class="tag">Blocked: ${esc(e.blockers.slice(0,35))}${e.blockers.length>35?'…':''}</span>` : ''}
         ${hasMetrics(e.metrics) ? `<span class="tag accent">📊 Metrics</span>` : ''}
         ${e.images && e.images.length ? `<span class="tag">📷 ${e.images.length} photo${e.images.length>1?'s':''}</span>` : ''}
       </div>
@@ -1249,12 +1210,6 @@ function openEntry(id) {
       ${row('Needs attention tomorrow', e.attention)}
     </div>
     <div class="detail-section">
-      <div class="detail-section-title">Daily Check-in</div>
-      ${row('Worked on', e.workedOn)}
-      ${row('Completed', e.completed)}
-      ${row('Blockers', e.blockers)}
-      ${row('Plan tomorrow', e.tomorrow)}
-      ${row('Ideas / Lessons', e.ideas)}
     </div>
     ${hasMetrics(m) ? `<div class="detail-section"><div class="detail-section-title">Metrics</div>${metricHtml}</div>` : ''}
     ${photosHtml}
@@ -1331,8 +1286,7 @@ function applyFilters() {
     if (from && e.date < from) return false;
     if (to   && e.date > to)   return false;
     if (search) {
-      const blob = [e.focus, e.win, e.challenge, e.workedOn, e.completed,
-        e.blockers, e.tomorrow, e.ideas, e.moved, e.attention].join(' ').toLowerCase();
+      const blob = [e.focus, e.win, e.challenge, e.moved, e.attention].join(' ').toLowerCase();
       if (!blob.includes(search)) return false;
     }
     return true;
@@ -1500,7 +1454,6 @@ function calcStreak(dates) {
 
 function renderKeywordCharts() {
   renderKeywords('chart-wins',     filteredEntries.map(e => e.win).filter(Boolean), 'green');
-  renderKeywords('chart-blockers', filteredEntries.map(e => e.blockers).filter(Boolean), 'amber');
 }
 
 function renderKeywords(elId, texts, color) {
