@@ -2,9 +2,10 @@
 import { runScreener, runQuickScreener } from "@/lib/analysis/screener";
 import { scoreStock, rankStocks } from "@/lib/analysis/scorer";
 import { generateStockNarrative, generateExecutiveSummary } from "@/lib/analysis/claude";
-import { saveReport, getLatestReport, getTodaysHourlyReports } from "@/lib/store";
+import { saveReport, getLatestReport, getLatestDailyReport, getTodaysHourlyReports } from "@/lib/store";
 import { sendDigestEmail } from "@/lib/email";
 import { autoPaperTrade } from "@/lib/paper-trading";
+import { getMarketRegime } from "@/lib/data/yahoo";
 import type { ScanReport, ScoredStock } from "@/lib/types";
 
 // Check if market is currently open (9:30am–4pm ET, Mon–Fri)
@@ -30,11 +31,22 @@ export async function runHourlyScan(): Promise<ScanReport> {
   const hour = now.getUTCHours().toString().padStart(2, "0");
   const reportId = `${date}_hourly_${hour}`;
 
+  // Fetch market regime + cached fundamentals in parallel
+  const [regime, lastDaily] = await Promise.all([
+    getMarketRegime().catch(() => ({ bearish: false, spyPrice: 0, spyMa50: 0 })),
+    getLatestDailyReport().catch(() => null),
+  ]);
+
+  // Build fundamentals cache from last daily scan so hourly scores aren't blind
+  const fundamentalsCache = new Map(
+    (lastDaily?.allStocks ?? []).map((s) => [s.ticker, s])
+  );
+
   // Quick scan: 20 stocks, fast sources only (no Finnhub fundamentals — they don't change hourly)
-  const rawStocks = await runQuickScreener(20);
+  const rawStocks = await runQuickScreener(20, fundamentalsCache);
   if (rawStocks.length === 0) throw new Error("Screener returned no stocks");
 
-  const scored = rawStocks.map(scoreStock);
+  const scored = rawStocks.map((s) => scoreStock(s, { marketBearish: regime.bearish }));
 
   // AI narratives for top 10 only (faster)
   const top10 = [...scored].sort((a, b) => b.convictionScore - a.convictionScore).slice(0, 10);
@@ -122,15 +134,22 @@ export async function runScan(scanType: "morning" | "evening"): Promise<ScanRepo
   const date = new Date().toISOString().split("T")[0];
   const reportId = `${date}_${scanType}`;
 
-  // Get previous report for comparison
-  const previousReport = await getLatestReport(scanType).catch(() => null);
+  // Get previous report + market regime in parallel
+  const [previousReport, regime] = await Promise.all([
+    getLatestReport(scanType).catch(() => null),
+    getMarketRegime().catch(() => ({ bearish: false, spyPrice: 0, spyMa50: 0 })),
+  ]);
+
+  if (regime.bearish) {
+    console.log(`⚠️ Bearish market regime detected — SPY $${regime.spyPrice} below 50MA $${regime.spyMa50}`);
+  }
 
   // Screen and enrich stocks
   const rawStocks = await runScreener(100);
   if (rawStocks.length === 0) throw new Error("Screener returned no stocks");
 
-  // Score all stocks
-  const scored = rawStocks.map(scoreStock);
+  // Score all stocks with market regime context
+  const scored = rawStocks.map((s) => scoreStock(s, { marketBearish: regime.bearish }));
 
   // Generate AI narratives for top 20 candidates
   const top20 = [...scored].sort((a, b) => b.convictionScore - a.convictionScore).slice(0, 20);

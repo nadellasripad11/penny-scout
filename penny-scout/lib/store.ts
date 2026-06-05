@@ -46,6 +46,16 @@ export async function getRecentReports(n = 10): Promise<ScanReport[]> {
   return reports.sort((a, b) => b.timestamp - a.timestamp).slice(0, n);
 }
 
+// Latest non-hourly report — used to cache fundamentals for quick hourly scans
+export async function getLatestDailyReport(): Promise<ScanReport | null> {
+  const data = await rtdbGet("scanReports");
+  if (!data) return null;
+  const reports = Object.values(data as Record<string, ScanReport>)
+    .filter((r) => r.scanType !== "hourly")
+    .sort((a, b) => b.timestamp - a.timestamp);
+  return reports[0] ?? null;
+}
+
 export async function getTodaysHourlyReports(date: string): Promise<ScanReport[]> {
   const data = await rtdbGet("scanReports");
   if (!data) return [];

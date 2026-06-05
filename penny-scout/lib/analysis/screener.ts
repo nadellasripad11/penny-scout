@@ -4,7 +4,7 @@ import { getBasicFinancials, getCompanyProfile, getCompanyNews, getInsiderTransa
 import { getStockTwitsData } from "@/lib/data/stocktwits";
 import { getRedditMentions } from "@/lib/data/reddit";
 import { getRecent8K } from "@/lib/data/edgar";
-import type { StockData } from "@/lib/types";
+import type { StockData, ScoredStock } from "@/lib/types";
 
 // Enrich top N candidates with full data
 export async function enrichStock(ticker: string, price: number, volume: number): Promise<StockData | null> {
@@ -184,8 +184,13 @@ export async function enrichStockQuick(ticker: string, price: number, volume: nu
   }
 }
 
-// Quick screener for hourly scans — no Finnhub rate-limit pauses, runs in ~20-30s
-export async function runQuickScreener(maxStocks = 20): Promise<StockData[]> {
+// Quick screener for hourly scans — no Finnhub rate-limit pauses, runs in ~20-30s.
+// Accepts a fundamentals cache (from the latest daily report) so hourly scores
+// reflect real financial data even though we don't re-fetch Finnhub.
+export async function runQuickScreener(
+  maxStocks = 20,
+  fundamentalsCache: Map<string, ScoredStock> = new Map()
+): Promise<StockData[]> {
   console.log("Running quick screener...");
   const bars = await getNasdaqPennyStocks();
   console.log(`Found ${bars.length} NASDAQ penny stocks`);
@@ -210,7 +215,39 @@ export async function runQuickScreener(maxStocks = 20): Promise<StockData[]> {
       batch.map((c) => enrichStockQuick(c.ticker, c.price, c.volume))
     );
     for (const r of results) {
-      if (r.status === "fulfilled" && r.value) enriched.push(r.value);
+      if (r.status === "fulfilled" && r.value) {
+        const stock = r.value;
+        // Merge in cached fundamentals from last daily scan so hourly scoring is better
+        const cached = fundamentalsCache.get(stock.ticker);
+        if (cached) {
+          Object.assign(stock, {
+            revenue: cached.revenue,
+            revenueGrowthYoY: cached.revenueGrowthYoY,
+            grossMargin: cached.grossMargin,
+            operatingMargin: cached.operatingMargin,
+            netMargin: cached.netMargin,
+            eps: cached.eps,
+            cash: cached.cash,
+            totalDebt: cached.totalDebt,
+            debtToEquity: cached.debtToEquity,
+            currentRatio: cached.currentRatio,
+            freeCashFlow: cached.freeCashFlow,
+            cashBurnRate: cached.cashBurnRate,
+            float: cached.float ?? stock.float,
+            sharesOutstanding: cached.sharesOutstanding,
+            shortInterest: cached.shortInterest,
+            insiderOwnership: cached.insiderOwnership,
+            institutionalOwnership: cached.institutionalOwnership,
+            analystRating: cached.analystRating,
+            analystPriceTarget: cached.analystPriceTarget,
+            analystTargetHigh: cached.analystTargetHigh,
+            analystTargetLow: cached.analystTargetLow,
+            analystCount: cached.analystCount,
+            marketCap: cached.marketCap,
+          });
+        }
+        enriched.push(stock);
+      }
     }
   }
 
