@@ -2,8 +2,7 @@ name: PennyScout Market Scans
 
 on:
   schedule:
-    # All times UTC. Market hours ET = UTC-4 (EDT) / UTC-5 (EST)
-    # Runs every hour from 9:30am to 3:30pm ET (covers full market day)
+    # Hourly scans — every hour at :30 past during market hours (ET = UTC-4)
     - cron: '30 13 * * 1-5'   # 9:30am ET  — market open
     - cron: '30 14 * * 1-5'   # 10:30am ET
     - cron: '30 15 * * 1-5'   # 11:30am ET
@@ -11,18 +10,12 @@ on:
     - cron: '30 17 * * 1-5'   # 1:30pm ET
     - cron: '30 18 * * 1-5'   # 2:30pm ET
     - cron: '30 19 * * 1-5'   # 3:30pm ET
-    # End-of-day compile — runs at 4:15pm ET, after all intraday scans finish
-    - cron: '15 20 * * 1-5'   # 4:15pm ET  — compile all hourly into daily website report
-  workflow_dispatch:          # allow manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   hourly-scan:
     name: Hourly Stock Scan
     runs-on: ubuntu-latest
-    # Only run for hourly schedule entries (not the 4:15pm compile)
-    if: >
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'schedule' && github.event.schedule != '15 20 * * 1-5')
     steps:
       - name: Trigger hourly scan
         run: |
@@ -34,27 +27,9 @@ jobs:
             echo "Scan returned HTTP $STATUS"
             exit 1
           fi
-          SKIPPED=$(cat /tmp/response.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('skipped','false'))" 2>/dev/null || echo "false")
+          SKIPPED=$(python3 -c "import sys,json; d=json.load(open('/tmp/response.json')); print(d.get('skipped','false'))" 2>/dev/null || echo "false")
           if [ "$SKIPPED" = "True" ]; then
             echo "Market closed — scan skipped gracefully"
           else
             echo "Scan completed successfully"
           fi
-
-  compile-daily:
-    name: End-of-Day Compile
-    runs-on: ubuntu-latest
-    if: >
-      github.event.schedule == '15 20 * * 1-5'
-    steps:
-      - name: Compile all hourly scans into daily website report
-        run: |
-          STATUS=$(curl -s -o /tmp/compile.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://penny-scout.vercel.app/api/scan/compile")
-          cat /tmp/compile.json
-          if [ "$STATUS" != "200" ]; then
-            echo "Compile returned HTTP $STATUS"
-            exit 1
-          fi
-          echo "Daily compile completed"
