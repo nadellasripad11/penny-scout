@@ -1,5 +1,5 @@
 // Shared scan logic used by both morning and evening routes
-import { runScreener } from "@/lib/analysis/screener";
+import { runScreener, runQuickScreener } from "@/lib/analysis/screener";
 import { scoreStock, rankStocks } from "@/lib/analysis/scorer";
 import { generateStockNarrative, generateExecutiveSummary } from "@/lib/analysis/claude";
 import { saveReport, getLatestReport, getTodaysHourlyReports } from "@/lib/store";
@@ -30,8 +30,8 @@ export async function runHourlyScan(): Promise<ScanReport> {
   const hour = now.getUTCHours().toString().padStart(2, "0");
   const reportId = `${date}_hourly_${hour}`;
 
-  // Lighter scan: 40 stocks, AI narratives for top 10 only
-  const rawStocks = await runScreener(40);
+  // Quick scan: 20 stocks, fast sources only (no Finnhub fundamentals — they don't change hourly)
+  const rawStocks = await runQuickScreener(20);
   if (rawStocks.length === 0) throw new Error("Screener returned no stocks");
 
   const scored = rawStocks.map(scoreStock);
