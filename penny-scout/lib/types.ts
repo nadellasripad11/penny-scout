@@ -151,6 +151,7 @@ export interface ScanReport {
   date: string;
   scanType: "morning" | "evening" | "hourly";
   timestamp: number;
+  totalStocksFound: number;   // full NASDAQ penny universe found before top-N filter
   executiveSummary: {
     topToday: ScoredStock[];
     topWeek: ScoredStock[];

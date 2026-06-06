@@ -133,7 +133,7 @@ export async function sendDigestEmail(
   <div style="background:linear-gradient(135deg,#1e3a5f,#0f172a);border:1px solid #1e40af;border-radius:12px;padding:20px;margin-bottom:16px;text-align:center">
     <div style="font-size:28px;margin-bottom:6px">${emoji}</div>
     <h1 style="margin:0 0 4px;color:#38bdf8;font-size:22px;font-weight:700">PennyScout ${titleLabel}</h1>
-    <div style="color:#94a3b8;font-size:13px">${report.date}${timeLabel ? ` &nbsp;·&nbsp; ${timeLabel}` : ""} &nbsp;·&nbsp; <strong style="color:#f1f5f9">${allSorted.length} stocks scanned</strong></div>
+    <div style="color:#94a3b8;font-size:13px">${report.date}${timeLabel ? ` &nbsp;·&nbsp; ${timeLabel}` : ""} &nbsp;·&nbsp; <strong style="color:#f1f5f9">${(report.totalStocksFound ?? allSorted.length).toLocaleString()} stocks found</strong> &nbsp;·&nbsp; <strong style="color:#38bdf8">${allSorted.length} deeply analyzed</strong></div>
     <div style="margin-top:8px;color:#64748b;font-size:12px">
       Top pick: <strong style="color:#22c55e">${topPicks[0]?.ticker ?? "—"}</strong>
       &nbsp;·&nbsp; Score: <strong style="color:#f59e0b">${topPicks[0]?.convictionScore ?? "—"}/100</strong>

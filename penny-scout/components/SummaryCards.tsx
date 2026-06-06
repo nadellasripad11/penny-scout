@@ -21,11 +21,11 @@ export function SummaryCards({ report }: { report: ScanReport }) {
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-2">
           <TrendingUp size={14} className="text-emerald-400" />
-          <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Screened</span>
+          <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">Universe</span>
         </div>
-        <div className="text-2xl font-bold text-slate-200">{report.allStocks.length}</div>
-        <div className="text-xs text-slate-400 mt-0.5">NASDAQ stocks $0.50–$30</div>
-        <div className="text-xs text-slate-500 mt-1">{report.scanType} scan</div>
+        <div className="text-2xl font-bold text-slate-200">{(report.totalStocksFound ?? report.allStocks.length).toLocaleString()}</div>
+        <div className="text-xs text-slate-400 mt-0.5">NASDAQ penny stocks found</div>
+        <div className="text-xs text-slate-500 mt-1">Top <span className="text-cyan-400 font-semibold">{report.allStocks.length}</span> deeply analyzed</div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">

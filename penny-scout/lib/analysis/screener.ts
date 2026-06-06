@@ -190,10 +190,11 @@ export async function enrichStockQuick(ticker: string, price: number, volume: nu
 export async function runQuickScreener(
   maxStocks = 20,
   fundamentalsCache: Map<string, ScoredStock> = new Map()
-): Promise<StockData[]> {
+): Promise<{ stocks: StockData[]; totalFound: number }> {
   console.log("Running quick screener...");
   const bars = await getNasdaqPennyStocks();
-  console.log(`Found ${bars.length} NASDAQ penny stocks`);
+  const totalFound = bars.length;
+  console.log(`Found ${totalFound} NASDAQ penny stocks`);
 
   const candidates = bars
     .map((s) => ({
@@ -251,14 +252,15 @@ export async function runQuickScreener(
     }
   }
 
-  return enriched;
+  return { stocks: enriched, totalFound };
 }
 
-// Main screener: get all NASDAQ penny stocks, pick top 50 by volume/momentum, enrich them
-export async function runScreener(maxStocks = 50): Promise<StockData[]> {
+// Main screener: get all NASDAQ penny stocks, pick top N by volume/momentum, enrich them
+export async function runScreener(maxStocks = 50): Promise<{ stocks: StockData[]; totalFound: number }> {
   console.log("Running screener...");
   const bars = await getNasdaqPennyStocks();
-  console.log(`Found ${bars.length} NASDAQ penny stocks`);
+  const totalFound = bars.length;
+  console.log(`Found ${totalFound} NASDAQ penny stocks`);
 
   // Rank by relative volume (vs avg) then absolute volume as tiebreaker
   const candidates = bars
@@ -271,7 +273,7 @@ export async function runScreener(maxStocks = 50): Promise<StockData[]> {
     .sort((a, b) => b.relVol - a.relVol)
     .slice(0, maxStocks);
 
-  console.log(`Enriching top ${candidates.length} candidates...`);
+  console.log(`Enriching top ${candidates.length} of ${totalFound} candidates...`);
 
   // Enrich in batches of 5 to respect rate limits
   const enriched: StockData[] = [];
@@ -281,9 +283,7 @@ export async function runScreener(maxStocks = 50): Promise<StockData[]> {
       batch.map((c) => enrichStock(c.ticker, c.price, c.volume))
     );
     for (const r of results) {
-      if (r.status === "fulfilled" && r.value) {
-        enriched.push(r.value);
-      }
+      if (r.status === "fulfilled" && r.value) enriched.push(r.value);
     }
     // Brief pause between batches to respect Finnhub 60/min limit
     if (i + 5 < candidates.length) {
@@ -291,5 +291,5 @@ export async function runScreener(maxStocks = 50): Promise<StockData[]> {
     }
   }
 
-  return enriched;
+  return { stocks: enriched, totalFound };
 }

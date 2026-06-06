@@ -43,7 +43,7 @@ export async function runHourlyScan(): Promise<ScanReport> {
   );
 
   // Quick scan: 20 stocks, fast sources only (no Finnhub fundamentals — they don't change hourly)
-  const rawStocks = await runQuickScreener(20, fundamentalsCache);
+  const { stocks: rawStocks, totalFound } = await runQuickScreener(20, fundamentalsCache);
   if (rawStocks.length === 0) throw new Error("Screener returned no stocks");
 
   const scored = rawStocks.map((s) => scoreStock(s, { marketBearish: regime.bearish }));
@@ -74,6 +74,7 @@ export async function runHourlyScan(): Promise<ScanReport> {
     date,
     scanType: "hourly",
     timestamp: Date.now(),
+    totalStocksFound: totalFound,
     rankings: {
       topTomorrow: topToday,
       topWeek,
@@ -145,7 +146,7 @@ export async function runScan(scanType: "morning" | "evening"): Promise<ScanRepo
   }
 
   // Screen and enrich stocks
-  const rawStocks = await runScreener(100);
+  const { stocks: rawStocks, totalFound } = await runScreener(100);
   if (rawStocks.length === 0) throw new Error("Screener returned no stocks");
 
   // Score all stocks with market regime context
@@ -201,6 +202,7 @@ export async function runScan(scanType: "morning" | "evening"): Promise<ScanRepo
 
   const partialReport: Omit<ScanReport, "executiveSummary"> = {
     id: reportId,
+    totalStocksFound: totalFound,
     date,
     scanType,
     timestamp: Date.now(),
@@ -302,12 +304,19 @@ export async function compileDailySummary(): Promise<ScanReport> {
     .filter((n) => n.sentiment === "positive")
     .sort((a, b) => b.datetime - a.datetime)[0]?.headline ?? "No major catalysts identified";
 
+  // Total unique stocks seen across all hourly scans today
+  const totalStocksFound = hourlyReports.reduce(
+    (sum, r) => sum + (r.totalStocksFound ?? r.allStocks.length),
+    0
+  );
+
   const reportId = `${date}_daily`;
   const report: ScanReport = {
     id: reportId,
     date,
     scanType: "morning", // treated as the main daily report the website shows
     timestamp: Date.now(),
+    totalStocksFound,
     rankings: {
       topTomorrow: topToday,
       topWeek,
