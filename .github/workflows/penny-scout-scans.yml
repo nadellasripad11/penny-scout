@@ -1,0 +1,35 @@
+name: PennyScout Market Scans
+
+on:
+  schedule:
+    # Hourly scans — every hour at :30 past during market hours (ET = UTC-4)
+    - cron: '30 13 * * 1-5'   # 9:30am ET  — market open
+    - cron: '30 14 * * 1-5'   # 10:30am ET
+    - cron: '30 15 * * 1-5'   # 11:30am ET
+    - cron: '30 16 * * 1-5'   # 12:30pm ET
+    - cron: '30 17 * * 1-5'   # 1:30pm ET
+    - cron: '30 18 * * 1-5'   # 2:30pm ET
+    - cron: '30 19 * * 1-5'   # 3:30pm ET
+  workflow_dispatch:
+
+jobs:
+  hourly-scan:
+    name: Hourly Stock Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger hourly scan
+        run: |
+          STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://penny-scout.vercel.app/api/scan/hourly")
+          cat /tmp/response.json
+          if [ "$STATUS" != "200" ]; then
+            echo "Scan returned HTTP $STATUS"
+            exit 1
+          fi
+          SKIPPED=$(python3 -c "import sys,json; d=json.load(open('/tmp/response.json')); print(d.get('skipped','false'))" 2>/dev/null || echo "false")
+          if [ "$SKIPPED" = "True" ]; then
+            echo "Market closed — scan skipped gracefully"
+          else
+            echo "Scan completed successfully"
+          fi

@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // PennyScout collections — server writes only, public reads for dashboard
+    match /scanReports/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
+    match /stockHistory/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

@@ -1,0 +1,23 @@
+name: PennyScout End-of-Day Compile
+
+on:
+  schedule:
+    - cron: '15 20 * * 1-5'   # 4:15pm ET — merge all hourly scans into daily website report
+  workflow_dispatch:
+
+jobs:
+  compile:
+    name: Compile Daily Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge all hourly scans into one daily report for the website
+        run: |
+          STATUS=$(curl -s -o /tmp/compile.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://penny-scout.vercel.app/api/scan/compile")
+          cat /tmp/compile.json
+          if [ "$STATUS" != "200" ]; then
+            echo "Compile returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "Daily compile completed — website updated"
