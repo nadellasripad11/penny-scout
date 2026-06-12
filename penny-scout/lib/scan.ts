@@ -145,15 +145,15 @@ export async function runScan(scanType: "morning" | "evening"): Promise<ScanRepo
     console.log(`⚠️ Bearish market regime detected — SPY $${regime.spyPrice} below 50MA $${regime.spyMa50}`);
   }
 
-  // Screen and enrich stocks
-  const { stocks: rawStocks, totalFound } = await runScreener(100);
+  // Screen and enrich stocks (60 stocks = ~11 batches × 5s = fits in 300s Vercel limit)
+  const { stocks: rawStocks, totalFound } = await runScreener(60);
   if (rawStocks.length === 0) throw new Error("Screener returned no stocks");
 
   // Score all stocks with market regime context
   const scored = rawStocks.map((s) => scoreStock(s, { marketBearish: regime.bearish }));
 
-  // Generate AI narratives for top 20 candidates
-  const top20 = [...scored].sort((a, b) => b.convictionScore - a.convictionScore).slice(0, 20);
+  // Generate AI narratives for top 15 candidates (saves ~20s vs top 20, stays under 300s limit)
+  const top20 = [...scored].sort((a, b) => b.convictionScore - a.convictionScore).slice(0, 15);
   const narrativeResults = await Promise.allSettled(
     top20.map((s) => generateStockNarrative(s, previousReport ?? undefined))
   );

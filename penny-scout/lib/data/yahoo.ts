@@ -79,18 +79,31 @@ async function getAlphaVantageMovers(): Promise<YahooQuote[]> {
 }
 
 // ── NASDAQ trader list (official, free) ─────────────────────────────────────
-async function getNasdaqTickerList(): Promise<string[]> {
+// File format: Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
+// Column 6 = "Y" means it's an ETF — skip those entirely
+async function getNasdaqTickerList(): Promise<{ tickers: string[]; etfSet: Set<string> }> {
   const res = await fetch(
     "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
     { headers: { "User-Agent": "research/1.0" }, next: { revalidate: 86400 } }
   );
-  if (!res.ok) return [];
+  if (!res.ok) return { tickers: [], etfSet: new Set() };
   const text = await res.text();
-  return text
-    .split("\n")
-    .slice(1)
-    .map((l) => l.split("|")[0]?.trim())
-    .filter((t) => t && /^[A-Z]{2,5}$/.test(t)); // 2-5 uppercase only
+
+  const etfSet = new Set<string>();
+  const tickers: string[] = [];
+
+  for (const line of text.split("\n").slice(1)) {
+    const cols = line.split("|");
+    const ticker = cols[0]?.trim();
+    if (!ticker || !/^[A-Z]{2,5}$/.test(ticker)) continue;
+    if (cols[6]?.trim() === "Y") {
+      etfSet.add(ticker); // track ETFs so we can filter Alpha Vantage movers too
+    } else {
+      tickers.push(ticker);
+    }
+  }
+
+  return { tickers, etfSet };
 }
 
 // ── Yahoo Finance v8 chart — single ticker price lookup ──────────────────────
@@ -108,13 +121,16 @@ async function getYFPrice(ticker: string): Promise<YahooQuote | null> {
     if (!meta) return null;
     const price = meta.regularMarketPrice ?? 0;
     const volume = meta.regularMarketVolume ?? 0;
+    const marketCap = meta.marketCap ?? 0;
     const minVol = price < 3 ? 30_000 : 100_000;
     if (price < 0.5 || price > 30 || volume < minVol) return null;
+    // Skip large-caps that happen to be in the penny price range (e.g. airline stocks on bad days)
+    if (marketCap > 500_000_000) return null;
     return {
       ticker,
       price,
       volume,
-      marketCap: meta.marketCap ?? 0,
+      marketCap,
       changePercent: 0,
       avgVolume: 0,
     };
@@ -139,22 +155,25 @@ async function batchGetPrices(tickers: string[], concurrency = 40): Promise<Yaho
 // ── Main export ──────────────────────────────────────────────────────────────
 export async function getNasdaqPennyStocks(): Promise<YahooQuote[]> {
   // Run both sources in parallel
-  const [movers, allTickers] = await Promise.all([
+  const [movers, { tickers: allTickers, etfSet }] = await Promise.all([
     getAlphaVantageMovers(),
     getNasdaqTickerList(),
   ]);
 
-  console.log(`AV movers: ${movers.length} | NASDAQ list: ${allTickers.length}`);
+  // Filter Alpha Vantage movers: remove ETFs identified from the NASDAQ list
+  const filteredMovers = movers.filter((m) => !etfSet.has(m.ticker));
+
+  console.log(`AV movers: ${movers.length} → ${filteredMovers.length} after ETF filter | NASDAQ stocks (non-ETF): ${allTickers.length}`);
 
   // Remove tickers already found via AV movers to avoid duplicate API calls
-  const moverSet = new Set(movers.map((m) => m.ticker));
+  const moverSet = new Set(filteredMovers.map((m) => m.ticker));
   const remaining = allTickers.filter((t) => !moverSet.has(t));
 
   // Batch price lookup for the full NASDAQ list
   const broadResults = await batchGetPrices(remaining, 40);
 
   // Merge, dedupe, sort by volume
-  const all = [...movers, ...broadResults];
+  const all = [...filteredMovers, ...broadResults];
   const seen = new Set<string>();
   const deduped = all.filter((q) => {
     if (seen.has(q.ticker)) return false;
