@@ -20,5 +20,19 @@
       "runtimeArgs": ["run", "dev", "--prefix", "penny-scout", "--", "--port", "3001"],
       "port": 3001
     }
+  ,
+    {
+      "name": "leadscan-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "/tmp/leadscan-web", "--", "--port", "3002"],
+      "port": 3002
+    }
+  ,
+    {
+      "name": "serenityux",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-p", "4202", "serenityux"],
+      "port": 4202
+    }
   ]
 }
