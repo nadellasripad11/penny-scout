@@ -1,7 +1,14 @@
 {
   "name": "penny-scout",
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "description": "AI-powered stock screener that scans NASDAQ hourly, scores stocks on 10 signals, and generates daily AI narratives",
+  "author": "Sripad Nadella <nadellasripad11@gmail.com>",
+  "license": "MIT",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nadellasripad11/penny-scout"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
