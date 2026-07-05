@@ -99,9 +99,25 @@ curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/scan/hour
 
 ---
 
+## Deployment & Monitoring
+
+**Hosting:** Vercel (serverless Next.js)  
+**CI/CD:** GitHub Actions (cron-based triggering)  
+**Monitoring:** Vercel Analytics, GitHub Actions logs  
+**Email Delivery:** Resend (with fallback to Nodemailer)
+
+**Performance targets:**
+- Scan latency: <5s per 10 stocks (Groq API dependent)
+- Email delivery: <30s from end-of-market
+- Daily uptime: 99.5% during market hours
+
+---
+
 ## Roadmap
 
 - [ ] Options flow integration (unusual activity detection)
 - [ ] Backtesting framework - simulate historical performance of top-scored picks
 - [ ] Slack/Discord webhook for real-time alerts
 - [ ] Portfolio tracking with actual P&L vs. paper trades
+- [ ] Advanced sentiment analysis with news aggregation
+- [ ] Real-time watchlist alerts and notifications
