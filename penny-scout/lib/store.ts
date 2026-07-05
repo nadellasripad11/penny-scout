@@ -19,10 +19,16 @@ async function rtdbGet(path: string): Promise<unknown> {
   return res.json();
 }
 
+/**
+ * Save a completed scan report to the database
+ */
 export async function saveReport(report: ScanReport): Promise<void> {
   await rtdbSet(`scanReports/${report.id}`, report);
 }
 
+/**
+ * Get the most recent scan report, optionally filtered by type
+ */
 export async function getLatestReport(scanType?: "morning" | "evening" | "hourly"): Promise<ScanReport | null> {
   const data = await rtdbGet("scanReports");
   if (!data) return null;
@@ -34,11 +40,17 @@ export async function getLatestReport(scanType?: "morning" | "evening" | "hourly
   return filtered.sort((a, b) => b.timestamp - a.timestamp)[0];
 }
 
+/**
+ * Fetch a specific scan report by ID
+ */
 export async function getReportById(id: string): Promise<ScanReport | null> {
   const data = await rtdbGet(`scanReports/${id}`);
   return data ? (data as ScanReport) : null;
 }
 
+/**
+ * Get the N most recent scan reports (default: 10)
+ */
 export async function getRecentReports(n = 10): Promise<ScanReport[]> {
   const data = await rtdbGet("scanReports");
   if (!data) return [];
@@ -75,10 +87,16 @@ async function rtdbPatch(path: string, data: unknown): Promise<void> {
   if (!res.ok) throw new Error(`RTDB patch failed: ${res.status}`);
 }
 
+/**
+ * Save a new paper trade (simulated position)
+ */
 export async function savePaperTrade(trade: PaperTrade): Promise<void> {
   await rtdbSet(`paperTrades/${trade.id}`, trade);
 }
 
+/**
+ * Get all paper trades, sorted by entry timestamp (newest first)
+ */
 export async function getPaperTrades(): Promise<PaperTrade[]> {
   const data = await rtdbGet("paperTrades");
   if (!data) return [];
@@ -86,11 +104,18 @@ export async function getPaperTrades(): Promise<PaperTrade[]> {
     .sort((a, b) => b.entryTimestamp - a.entryTimestamp);
 }
 
+/**
+ * Get all currently open (unclosed) paper trades
+ */
 export async function getOpenPositions(): Promise<PaperTrade[]> {
   const trades = await getPaperTrades();
   return trades.filter((t) => t.status === "open");
 }
 
+/**
+ * Close an open paper trade with exit price and reason
+ * Calculates P&L and updates trade status
+ */
 export async function closePaperTrade(
   id: string,
   exitPrice: number,
