@@ -1,6 +1,18 @@
+/**
+ * Email digest generation and delivery
+ *
+ * Formats scan reports as HTML email with styled stock cards,
+ * conviction scores, and risk ratings. Sends via Resend (primary)
+ * or Nodemailer (fallback).
+ */
+
 import nodemailer from "nodemailer";
 import type { ScanReport, ScoredStock } from "@/lib/types";
 
+/**
+ * Create Nodemailer transporter for fallback email delivery
+ * Uses Gmail SMTP with app-specific password for security
+ */
 function getTransport() {
   return nodemailer.createTransport({
     service: "gmail",
@@ -11,8 +23,19 @@ function getTransport() {
   });
 }
 
+/**
+ * Map conviction score (0-100) to color: green (70+), amber (50-69), red (<50)
+ */
 const scoreColor = (n: number) => n >= 70 ? "#22c55e" : n >= 50 ? "#f59e0b" : "#ef4444";
+
+/**
+ * Map risk rating to color: green (Low), amber (Medium), red (High/Very High)
+ */
 const riskColor = (r: string) => r === "Low" ? "#22c55e" : r === "Medium" ? "#f59e0b" : "#ef4444";
+
+/**
+ * Map expected return percentage to color: green (50%+), amber (20-49%), gray (<20%)
+ */
 const returnColor = (n: number) => n >= 50 ? "#22c55e" : n >= 20 ? "#f59e0b" : "#94a3b8";
 
 function highlightCard(s: ScoredStock, rank: number, label: string) {
